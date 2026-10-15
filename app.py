@@ -282,7 +282,7 @@ def aplicar_estilo():
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap');
 
-        html {{ font-size: 110%; }}
+        html {{ font-size: 100%; }}
         html, body, .stApp, [data-testid="stMarkdownContainer"], .stMarkdown p, label, li {{
             font-family: 'Work Sans', sans-serif; color: {COR_TEXTO};
         }}
@@ -303,8 +303,8 @@ def aplicar_estilo():
 
         /* Tipografia das telas */
         .kicker {{ font-size: .85rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: {COR_FEMININO}; margin-bottom: .2rem; }}
-        .pg-titulo {{ font-family: 'Sora', sans-serif; font-weight: 700; font-size: 2.15rem; line-height: 1.2; margin: 0 0 .6rem; }}
-        .manchete {{ font-size: 1.3rem; line-height: 1.5; background: #FFFFFF; border-left: 6px solid {COR_FEMININO};
+        .pg-titulo {{ font-family: 'Sora', sans-serif; font-weight: 700; font-size: 1.9rem; line-height: 1.2; margin: 0 0 .6rem; }}
+        .manchete {{ font-size: 1.15rem; line-height: 1.5; background: #FFFFFF; border-left: 6px solid {COR_FEMININO};
                     border-radius: 14px; padding: 1rem 1.3rem; margin: .4rem 0 1.2rem; box-shadow: 0 1px 3px rgba(0,0,0,.05); }}
         .manchete b {{ color: {COR_FEMININO}; }}
 
@@ -319,7 +319,7 @@ def aplicar_estilo():
         .kpi-destaque {{ background: {COR_FEMININO}; border: none; box-shadow: 0 6px 18px rgba(255,83,103,.30); }}
         .kpi-destaque .kpi-r, .kpi-destaque .kpi-v, .kpi-destaque .kpi-s {{ color: #FFFFFF; }}
         .kpi-r {{ font-size: .95rem; font-weight: 600; color: {COR_MUTED}; }}
-        .kpi-v {{ font-family: 'Sora', sans-serif; font-weight: 700; font-size: 2.3rem; line-height: 1.15; margin: .15rem 0; }}
+        .kpi-v {{ font-family: 'Sora', sans-serif; font-weight: 700; font-size: 2rem; line-height: 1.15; margin: .15rem 0; }}
         .kpi-s {{ font-size: .88rem; color: {COR_MUTED}; }}
 
         /* Cartões de gráfico */
@@ -366,23 +366,23 @@ def estilizar(fig, altura: int = 330, legenda: bool = False, horizontal: bool = 
     """Acabamento único para todo gráfico Plotly: fonte grande, fundo transparente,
     grade discreta, legenda no topo, separadores no padrão brasileiro."""
     fig.update_layout(
-        font=dict(family=FONTE_CORPO, size=14, color=COR_TEXTO),
+        font=dict(family=FONTE_CORPO, size=13, color=COR_TEXTO),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=altura,
         margin=dict(t=44 if legenda else 8, b=8, l=8, r=8),
         showlegend=legenda,
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0, title=None, font_size=14),
-        hoverlabel=dict(bgcolor="white", font_size=14, font_family=FONTE_CORPO, bordercolor="#E0E0E0"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0, title=None, font_size=13),
+        hoverlabel=dict(bgcolor="white", font_size=13, font_family=FONTE_CORPO, bordercolor="#E0E0E0"),
         separators=",.",
         bargap=0.28,
     )
     if horizontal:
-        fig.update_xaxes(showgrid=True, gridcolor=COR_GRADE, zeroline=False, showline=False, title=None, tickfont_size=13, tickformat=",.0f")
-        fig.update_yaxes(showgrid=False, showline=False, title=None, tickfont_size=13, automargin=True)
+        fig.update_xaxes(showgrid=True, gridcolor=COR_GRADE, zeroline=False, showline=False, title=None, tickfont_size=12, tickformat=",.0f")
+        fig.update_yaxes(showgrid=False, showline=False, title=None, tickfont_size=12, automargin=True)
     else:
-        fig.update_xaxes(showgrid=False, showline=True, linecolor="#DADADA", title=None, tickfont_size=13, automargin=True)
-        fig.update_yaxes(showgrid=True, gridcolor=COR_GRADE, zeroline=False, showline=False, title=None, tickfont_size=13, tickformat=",.0f")
+        fig.update_xaxes(showgrid=False, showline=True, linecolor="#DADADA", title=None, tickfont_size=12, automargin=True)
+        fig.update_yaxes(showgrid=True, gridcolor=COR_GRADE, zeroline=False, showline=False, title=None, tickfont_size=12, tickformat=",.0f")
     try:
         fig.update_traces(marker_cornerradius=6, selector=dict(type="bar"))
     except Exception:
@@ -484,7 +484,7 @@ def barras_h(dados, col_valor, col_rotulo, nome_hover, sufixo="%", prefixo="", c
         x=d[col_valor], y=rotulos.map(lambda s: quebrar(s, largura_rotulo)), orientation="h",
         marker=dict(color=cores), customdata=rotulos,
         text=d[col_valor], texttemplate=f"{prefixo}%{{x:{fmt}}}{sufixo}", textposition="outside",
-        cliponaxis=False, textfont=dict(size=13),
+        cliponaxis=False, textfont=dict(size=12),
         hovertemplate=f"<b>%{{customdata}}</b><br>{nome_hover}: {prefixo}%{{x:{fmt}}}{sufixo}<extra></extra>",
     ))
     n = len(d)
@@ -566,7 +566,7 @@ def linhas(dados, col_x, series, fmt, sufixo="", prefixo="", altura=330, legenda
             x=d[col_x], y=valores, name=nome, mode="lines+markers+text" if not tracejada else "lines",
             line=dict(color=cor, width=3 if not tracejada else 2, dash="dash" if tracejada else "solid"),
             marker=dict(size=8, color=cor, line=dict(color="white", width=2)),
-            text=rotulos if not tracejada else None, textposition="top center", textfont=dict(size=13, color=COR_TEXTO),
+            text=rotulos if not tracejada else None, textposition="top center", textfont=dict(size=12, color=COR_TEXTO),
             hovertemplate=f"<b>%{{x}}</b><br>{nome}: {prefixo}%{{y:{fmt}}}{sufixo}<extra></extra>",
         ))
     estilizar(fig, altura, legenda=legenda)
@@ -649,7 +649,7 @@ def figura_mapa(est: pd.DataFrame, geojson: dict, metrica: str, foco_sigla: str 
     fig.update_layout(
         margin=dict(t=0, b=0, l=0, r=0),
         coloraxis_colorbar=dict(orientation="h", y=-0.02, yanchor="top", thickness=12, len=0.55,
-                                title=None, tickfont_size=13, ticksuffix=cfg["sufixo"],
+                                title=None, tickfont_size=12, ticksuffix=cfg["sufixo"],
                                 tickprefix=cfg["prefixo"], tickformat=",.0f" if cfg["campo"] == "rem_f" else ".0f"),
     )
     return fig
@@ -778,7 +778,7 @@ def kpis(ctx):
 def pagina_inicio(cat: dict):
     anos = cat["anos"]
     st.markdown('<div class="kicker">Painel de apoio à tomada de decisão</div>'
-                '<div class="pg-titulo" style="font-size:2.7rem">Onde estão as oportunidades de trabalho para as mulheres no Brasil?</div>',
+                '<div class="pg-titulo" style="font-size:2.3rem">Onde estão as oportunidades de trabalho para as mulheres no Brasil?</div>',
                 unsafe_allow_html=True)
     manchete("Um painel interativo para <b>explorar o mercado de trabalho formal</b> pela perspectiva das mulheres: "
              "quantas são, em que setores e estados estão, quanto ganham e como isso se compara aos homens — "
@@ -1155,7 +1155,7 @@ def pagina_perfil(ctx):
             if not i_gap.empty:
                 fig = go.Figure(go.Bar(
                     x=i_gap["faixa_etaria"].astype(str), y=i_gap["gap"], marker=dict(color=cores_na_escala(i_gap["gap"], ESCALA_GAP)),
-                    text=i_gap["gap"], texttemplate="%{y:.1f}%", textposition="outside", cliponaxis=False, textfont=dict(size=13),
+                    text=i_gap["gap"], texttemplate="%{y:.1f}%", textposition="outside", cliponaxis=False, textfont=dict(size=12),
                     hovertemplate="<b>%{x}</b><br>Gap: %{y:.1f}%<extra></extra>"))
                 estilizar(fig, 360)
                 fig.update_yaxes(range=[0, max(10, i_gap["gap"].max() * 1.2)], ticksuffix="%")
@@ -1188,7 +1188,7 @@ def pagina_perfil(ctx):
         texto = [["" if pd.isna(v) else f"R$ {v:,.0f}".replace(",", ".") for v in linha] for linha in z.values]
         fig = go.Figure(go.Heatmap(
             z=z.values, x=z.columns.tolist(), y=z.index.tolist(), colorscale=ESCALA_ROSA, xgap=4, ygap=4,
-            text=texto, texttemplate="%{text}", textfont=dict(size=13, color=COR_TEXTO), showscale=False, hoverongaps=False,
+            text=texto, texttemplate="%{text}", textfont=dict(size=12, color=COR_TEXTO), showscale=False, hoverongaps=False,
             hovertemplate="<b>%{y}</b> · %{x}<br>Remuneração feminina: R$ %{z:,.0f}<extra></extra>"))
         estilizar(fig, max(300, 62 * len(ordem_raca) + 50))
         fig.update_yaxes(autorange="reversed", showgrid=False)
