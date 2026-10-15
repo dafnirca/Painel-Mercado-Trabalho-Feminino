@@ -1,0 +1,5 @@
+-r requirements.txt
+basedosdados
+pandas-gbq
+google-cloud-bigquery
+db-dtypes
