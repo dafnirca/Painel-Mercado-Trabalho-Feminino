@@ -183,6 +183,11 @@ COLUNAS_CATEGORICAS = [
 @st.cache_data(show_spinner="Carregando os dados…")
 def load_data(path: Path) -> pd.DataFrame:
     df = pd.read_parquet(path)
+    # Estados sem nome no join da ingestão (ex.: código ignorado) ficam com a própria sigla,
+    # e códigos sem sigla viram "Não informado" (no pandas 3, astype(str) preserva NaN).
+    df["sigla_uf"] = df["sigla_uf"].astype("object").where(df["sigla_uf"].notna(), "NI")
+    df["sigla_uf_nome"] = df["sigla_uf_nome"].astype("object").where(df["sigla_uf_nome"].notna(), None)
+    df["sigla_uf_nome"] = df["sigla_uf_nome"].fillna(df["sigla_uf"].map(lambda x: "Não informado" if x == "NI" else x))
     df["soma_pond"] = df["remuneracao_media"].astype(float) * df["qtd_vinculos"].astype(float)
     df["regiao"] = df["sigla_uf"].astype(str).map(REGIAO_DA_UF).fillna("Outra")
     for c in COLUNAS_CATEGORICAS + ["regiao"]:
@@ -197,8 +202,14 @@ def load_catalogo(path: Path) -> dict:
     cols = ["ano", "sigla_uf", "sigla_uf_nome", "setor_amigavel", "setor_descricao",
             "faixa_etaria", "faixa_remuneracao_media_sm", "qtd_vinculos"]
     d = pd.read_parquet(path, columns=cols)
-    ufs = d[["sigla_uf", "sigla_uf_nome"]].drop_duplicates().astype(str)
-    setores = d[["setor_amigavel", "setor_descricao"]].drop_duplicates().astype(str)
+    d["sigla_uf"] = d["sigla_uf"].astype("object").where(d["sigla_uf"].notna(), "NI")
+    d["sigla_uf_nome"] = d["sigla_uf_nome"].astype("object")
+    d["sigla_uf_nome"] = d["sigla_uf_nome"].where(
+        d["sigla_uf_nome"].notna(), d["sigla_uf"].map(lambda x: "Não informado" if x == "NI" else x))
+    ufs = d[["sigla_uf", "sigla_uf_nome"]].drop_duplicates()
+    ufs = ufs.assign(sigla_uf=ufs["sigla_uf"].astype(str), sigla_uf_nome=ufs["sigla_uf_nome"].astype(str))
+    ufs = ufs[ufs["sigla_uf_nome"].notna() & (ufs["sigla_uf_nome"] != "nan")]
+    setores = d[["setor_amigavel", "setor_descricao"]].dropna().drop_duplicates().astype(str)
     return {
         "anos": sorted(int(a) for a in d["ano"].unique()),
         "uf_nomes": dict(zip(ufs["sigla_uf"], ufs["sigla_uf_nome"])),
@@ -664,7 +675,7 @@ def barra_lateral(cat: dict) -> dict:
         periodo = (anos[0], anos[0])
 
     sb.markdown('<div class="side-grupo">Onde</div>', unsafe_allow_html=True)
-    nomes_uf = sorted(cat["uf_nomes"].values())
+    nomes_uf = sorted(str(n) for n in cat["uf_nomes"].values() if isinstance(n, str))
     foco_nome = sb.selectbox("Estado em foco", [BRASIL] + nomes_uf, key="foco_uf",
                              help="Também é definido ao clicar em um estado no mapa do Panorama.")
     if foco_nome != BRASIL:
