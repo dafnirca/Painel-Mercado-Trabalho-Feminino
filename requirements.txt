@@ -1,0 +1,5 @@
+basedosdados>=2.0.3
+pandas>=2.0
+pyarrow>=14.0
+streamlit>=1.40
+plotly>=6.0
