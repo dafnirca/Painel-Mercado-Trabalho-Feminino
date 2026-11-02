@@ -34,11 +34,24 @@ Identidade visual — paleta definida pela autora; cada cor tem um papel:
     Bright Amber    #FDD22B — único acento interativo (estado em foco, destaques)
     Sweet Salmon    #FF9885 — extremo "baixo" das escalas de cor
 
+AJUSTES PÓS-AVALIAÇÃO (nov/2026) — a partir das respostas do questionário:
+    A1 Contraste do mapa       escala sequencial de 4 tons (claro → rosa → vinho)
+    A2 Gráficos no celular     zoom/arrasto desligados: rolar a tela não deforma o gráfico
+    A3 Filtros no celular      barra lateral começa recolhida em telas pequenas e o botão
+                               de abrir vira um rótulo visível "Filtros"
+    A4 Excesso de texto        chave "Mostrar explicações" e tela Início mais enxuta
+                               (detalhes sobre dados e limitações em seções recolhíveis)
+    A5 Setores                 ajuda indica as 87 divisões CNAE do filtro "Setor específico"
+    C1 Correção                UF "IGNORADO" fora dos rankings por estado (seguia como "menor estado")
+    C2 Correção                rótulo "Código não encontrado" fora das faixas de idade e salário;
+                               raça/cor "Não identificado" fora do ranking da manchete
+
 Como rodar:
     streamlit run app.py
 """
 
 import json
+import os
 import re
 import textwrap
 from contextlib import contextmanager
@@ -65,7 +78,8 @@ COR_MUTED = "#6B6B6B"
 COR_GRADE = "#ECECEC"
 COR_FUNDO = "#F2F2F2"
 
-ESCALA_ROSA = [[0.0, "#FFF1F2"], [1.0, COR_FEMININO]]
+ESCALA_ROSA = [[0.0, "#FFF1F2"], [1.0, COR_FEMININO]]  
+ESCALA_MAPA = [[0.0, "#FFE8EA"], [0.35, "#FF9AA6"], [0.7, COR_FEMININO], [1.0, COR_MASCULINO]]
 ESCALA_GAP = [[0.0, "#FFE1D9"], [0.5, COR_SECUNDARIA], [1.0, COR_MASCULINO]]
 
 FONTE_CORPO = "Work Sans, sans-serif"
@@ -73,8 +87,14 @@ FONTE_TITULO = "Sora, sans-serif"
 
 SEXO_F, SEXO_M = "Feminino", "Masculino"
 BRASIL = "Brasil inteiro"
-MIN_SHARE_SETOR = 0.003      # setores com < 0,3% dos vínculos não entram em rankings (evita ruído de setor minúsculo)
-MIN_VINCULOS_CELULA = 200    # células do mapa de calor com menos vínculos que isso ficam em branco
+MIN_SHARE_SETOR = 0.003      
+MIN_VINCULOS_CELULA = 200
+
+def _link_avaliacao() -> str:
+    try:
+        return str(st.secrets.get("AVALIACAO_URL", "")) or os.environ.get("AVALIACAO_URL", "")
+    except Exception:
+        return os.environ.get("AVALIACAO_URL", "")    
 
 REGIAO_DA_UF = {
     **dict.fromkeys(["AC", "AM", "AP", "PA", "RO", "RR", "TO"], "Norte"),
@@ -96,12 +116,8 @@ PAGINAS = [
 st.set_page_config(
     page_title="Mercado de Trabalho Feminino no Brasil",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",  
 )
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Compatibilidade entre versões do Streamlit
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _versao_streamlit() -> tuple:
@@ -111,16 +127,10 @@ def _versao_streamlit() -> tuple:
         return (0, 0)
 
 
-# A partir da 1.51, "use_container_width" está depreciado em favor de width="stretch".
 LARGURA = {"width": "stretch"} if _versao_streamlit() >= (1, 51) else {"use_container_width": True}
 
 _contador_cartao = {"n": 0}
-# "localized" (separador de milhar do navegador) existe nas versões mais novas; antes disso, inteiro simples.
 FORMATO_INTEIRO = "localized" if _versao_streamlit() >= (1, 42) else "%d"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Formatação (padrão brasileiro)
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _vazio(v) -> bool:
@@ -157,8 +167,14 @@ def chave_ordem(rotulo: str) -> float:
     return float(m.group().replace(",", ".")) if m else 1e9
 
 
+def faixa_valida(v) -> bool:
+    """A RAIS traz o rótulo 'Código não encontrado nos dicionários oficiais' em idade e faixa salarial;
+    ele não é uma faixa e distorcia rankings (ex.: 'maior gap por idade')."""
+    return pd.notna(v) and not str(v).lower().startswith("código não encontrado")
+
+
 def ordenar_faixas(valores) -> list:
-    return sorted([v for v in valores if pd.notna(v)], key=chave_ordem)
+    return sorted([v for v in valores if faixa_valida(v)], key=chave_ordem)
 
 
 def limite_superior(faixa: str) -> float:
@@ -170,10 +186,6 @@ def limite_superior(faixa: str) -> float:
     return float(numeros[-1].replace(",", ".")) if numeros else float("nan")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Dados
-# ─────────────────────────────────────────────────────────────────────────────
-
 COLUNAS_CATEGORICAS = [
     "sigla_uf", "sigla_uf_nome", "sexo", "faixa_etaria", "raca_cor",
     "setor_secao", "setor_descricao", "setor_amigavel", "faixa_remuneracao_media_sm",
@@ -183,8 +195,6 @@ COLUNAS_CATEGORICAS = [
 @st.cache_data(show_spinner="Carregando os dados…")
 def load_data(path: Path) -> pd.DataFrame:
     df = pd.read_parquet(path)
-    # Estados sem nome no join da ingestão (ex.: código ignorado) ficam com a própria sigla,
-    # e códigos sem sigla viram "Não informado" (no pandas 3, astype(str) preserva NaN).
     df["sigla_uf"] = df["sigla_uf"].astype("object").where(df["sigla_uf"].notna(), "NI")
     df["sigla_uf_nome"] = df["sigla_uf_nome"].astype("object").where(df["sigla_uf_nome"].notna(), None)
     df["sigla_uf_nome"] = df["sigla_uf_nome"].fillna(df["sigla_uf"].map(lambda x: "Não informado" if x == "NI" else x))
@@ -238,6 +248,8 @@ def agregar(df: pd.DataFrame, cols: list) -> pd.DataFrame:
 
 def painel_sexo(df: pd.DataFrame, cols: list) -> pd.DataFrame:
     """Uma linha por grupo com: qtd_f, qtd_m, rem_f, rem_m, total, part (% feminina), gap (%)."""
+    if "sigla_uf" in cols:
+        df = df[df["sigla_uf"].astype(str).isin(REGIAO_DA_UF.keys())]
     a = agregar(df, cols + ["sexo"])
     f = a[a["sexo"] == SEXO_F].drop(columns="sexo").rename(columns={"qtd_vinculos": "qtd_f", "remuneracao_media": "rem_f"})
     m = a[a["sexo"] == SEXO_M].drop(columns="sexo").rename(columns={"qtd_vinculos": "qtd_m", "remuneracao_media": "rem_m"})
@@ -356,6 +368,30 @@ def aplicar_estilo():
         div[data-testid="stRadio"] label:has(input:checked) {{ background: {COR_FEMININO}; border-color: {COR_FEMININO}; }}
         div[data-testid="stRadio"] label:has(input:checked) p {{ color: #FFFFFF; }}
         div[data-testid="stRadio"] label p {{ font-weight: 600; font-size: 1rem; }}
+
+        /* A3 · Botão que abre a barra lateral: vira um rótulo visível "Filtros" */
+        [data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapsedControl"] button {{
+            background: {COR_FEMININO} !important; color: #FFFFFF !important; border-radius: 999px !important;
+            padding: .25rem .8rem .25rem .55rem !important; width: auto !important; gap: .3rem;
+            box-shadow: 0 2px 8px rgba(255,83,103,.35); }}
+        [data-testid="stExpandSidebarButton"] svg, [data-testid="stSidebarCollapsedControl"] button svg {{ color: #FFFFFF !important; }}
+        [data-testid="stExpandSidebarButton"]::after, [data-testid="stSidebarCollapsedControl"] button::after {{
+            content: "Filtros"; font-family: 'Work Sans', sans-serif; font-weight: 600; font-size: .95rem; }}
+
+        /* Telas pequenas: menos respiro, cartões e títulos mais compactos */
+        @media (max-width: 640px) {{
+            .block-container {{ padding: 3.6rem .9rem 3rem; }}
+            [data-testid="stHeader"] {{ background: {COR_FUNDO}; box-shadow: 0 1px 0 {COR_GRADE}; }}
+            .pg-titulo {{ font-size: 1.45rem; }}
+            .manchete {{ font-size: 1rem; padding: .8rem 1rem; }}
+            .kpi {{ min-height: 0; padding: .8rem 1rem; }}
+            .kpi-v {{ font-size: 1.6rem; }}
+            .passo, .passo-curto, .destaque {{ min-height: 0; }}
+            div[class*="st-key-card_"] {{ padding: .9rem .8rem .8rem; }}
+            div[data-testid="stRadio"] label[data-testid="stRadioOption"],
+            div[data-testid="stRadio"] label[data-baseweb="radio"] {{ padding: .3rem .75rem; }}
+            div[data-testid="stRadio"] label p {{ font-size: .9rem; }}
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -376,6 +412,7 @@ def estilizar(fig, altura: int = 330, legenda: bool = False, horizontal: bool = 
         hoverlabel=dict(bgcolor="white", font_size=13, font_family=FONTE_CORPO, bordercolor="#E0E0E0"),
         separators=",.",
         bargap=0.28,
+        dragmode=False,  
     )
     if horizontal:
         fig.update_xaxes(showgrid=True, gridcolor=COR_GRADE, zeroline=False, showline=False, title=None, tickfont_size=12, tickformat=",.0f")
@@ -383,6 +420,8 @@ def estilizar(fig, altura: int = 330, legenda: bool = False, horizontal: bool = 
     else:
         fig.update_xaxes(showgrid=False, showline=True, linecolor="#DADADA", title=None, tickfont_size=12, automargin=True)
         fig.update_yaxes(showgrid=True, gridcolor=COR_GRADE, zeroline=False, showline=False, title=None, tickfont_size=12, tickformat=",.0f")
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
     try:
         fig.update_traces(marker_cornerradius=6, selector=dict(type="bar"))
     except Exception:
@@ -390,8 +429,11 @@ def estilizar(fig, altura: int = 330, legenda: bool = False, horizontal: bool = 
     return fig
 
 
+CONFIG_GRAFICO = {"displayModeBar": False, "scrollZoom": False, "doubleClick": False}
+
+
 def mostrar(fig, chave: str | None = None):
-    kwargs = dict(config={"displayModeBar": False}, **LARGURA)
+    kwargs = dict(config=CONFIG_GRAFICO, **LARGURA)
     if chave:
         kwargs["key"] = chave
     st.plotly_chart(fig, **kwargs)
@@ -412,14 +454,19 @@ def cartao(titulo: str, contexto: str | None = None):
         caixa = st.container(border=True)
     with caixa:
         html = f'<div class="cartao-titulo">{titulo}</div>'
-        if contexto:
+        if contexto and explicacoes():
             html += f'<div class="cartao-ctx">{contexto}</div>'
         st.markdown(html, unsafe_allow_html=True)
         yield
 
 
+def explicacoes() -> bool:
+    """A4 · Chave da barra lateral: esconde contexto e conclusão dos cartões para quem prefere só os gráficos."""
+    return bool(st.session_state.get("explicacoes", True))
+
+
 def conclusao(texto: str | None):
-    if texto:
+    if texto and explicacoes():
         st.markdown(f'<div class="conclusao">{texto}</div>', unsafe_allow_html=True)
 
 
@@ -609,8 +656,21 @@ def ao_clicar_mapa(chave: str):
         st.session_state["foco_uf"] = nome
 
 
+def eh_celular() -> bool:
+    """Detecta navegador de celular pelo User-Agent (Streamlit ≥ 1.37); sem a informação, assume computador."""
+    try:
+        ua = str(st.context.headers.get("User-Agent", ""))
+    except Exception:
+        return False
+    return bool(re.search(r"Mobi|Android|iPhone|iPod", ua))
+
+
 def desenhar_mapa(fig, chave: str):
-    cfg = {"displayModeBar": False}
+    cfg = CONFIG_GRAFICO
+    if eh_celular():
+        fig.update_layout(height=430, dragmode=False)
+        st.plotly_chart(fig, config={**cfg, "staticPlot": False}, key=chave, **LARGURA)
+        return
     try:
         st.plotly_chart(fig, key=chave, on_select=partial(ao_clicar_mapa, chave),
                         selection_mode="points", config=cfg, **LARGURA)
@@ -619,9 +679,9 @@ def desenhar_mapa(fig, chave: str):
 
 
 METRICAS_MAPA = {
-    "Participação feminina": dict(campo="part", escala=ESCALA_ROSA, sufixo="%", prefixo="", fmt=".1f"),
+    "Participação feminina": dict(campo="part", escala=ESCALA_MAPA, sufixo="%", prefixo="", fmt=".1f"),
     "Gap salarial": dict(campo="gap", escala=ESCALA_GAP, sufixo="%", prefixo="", fmt=".1f"),
-    "Remuneração feminina": dict(campo="rem_f", escala=ESCALA_ROSA, sufixo="", prefixo="R$ ", fmt=",.0f"),
+    "Remuneração feminina": dict(campo="rem_f", escala=ESCALA_MAPA, sufixo="", prefixo="R$ ", fmt=",.0f"),
 }
 
 
@@ -675,7 +735,7 @@ def barra_lateral(cat: dict) -> dict:
         periodo = (anos[0], anos[0])
 
     sb.markdown('<div class="side-grupo">Onde</div>', unsafe_allow_html=True)
-    nomes_uf = sorted(str(n) for n in cat["uf_nomes"].values() if isinstance(n, str))
+    nomes_uf = sorted(str(n) for s_, n in cat["uf_nomes"].items() if isinstance(n, str) and s_ in REGIAO_DA_UF)
     foco_nome = sb.selectbox("Estado em foco", [BRASIL] + nomes_uf, key="foco_uf",
                              help="Também é definido ao clicar em um estado no mapa do Panorama.")
     if foco_nome != BRASIL:
@@ -683,7 +743,9 @@ def barra_lateral(cat: dict) -> dict:
 
     sb.markdown('<div class="side-grupo">Em quê</div>', unsafe_allow_html=True)
     todos_setores = sorted(cat["setores"]["setor_amigavel"].unique())
-    setores = sb.multiselect("Setor", todos_setores, key="setores", placeholder="Todos os setores")
+    setores = sb.multiselect("Setor", todos_setores, key="setores", placeholder="Todos os setores",
+                             help=f"{len(todos_setores)} grupos de leitura rápida. Para o detalhe oficial "
+                                  f"({cat['setores']['setor_descricao'].nunique()} divisões da CNAE), use o filtro abaixo.")
     pool = cat["setores"]
     if setores:
         pool = pool[pool["setor_amigavel"].isin(setores)]
@@ -695,6 +757,15 @@ def barra_lateral(cat: dict) -> dict:
     salarios = sb.multiselect("Faixa salarial (salários mínimos)", cat["faixas_salariais"], key="salarios", placeholder="Todas")
 
     sb.caption("Deixe um filtro vazio para não restringir.")
+
+    sb.markdown('<div class="side-grupo">Leitura</div>', unsafe_allow_html=True)
+    sb.toggle("Mostrar explicações nos gráficos", value=True, key="explicacoes",
+              help="Desligue para ver só os gráficos, sem o texto de contexto e a conclusão de cada cartão.")
+
+    link = _link_avaliacao()
+    if link:
+        sb.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
+        sb.link_button("Avalie o painel (1 min)", link, **LARGURA)
     return dict(ano_ref=int(ano_ref), periodo=tuple(int(p) for p in periodo), foco_nome=foco_nome,
                 setores=setores, especificos=especificos, idades=idades, salarios=salarios)
 
@@ -803,7 +874,7 @@ def pagina_inicio(cat: dict):
     c1, c2, c3, c4 = st.columns(4)
     usos = [
         ("Escolha uma perspectiva", "Navegue pelos botões no topo, na ordem sugerida ou direto para o que importa para você."),
-        ("Filtre pela barra lateral", "Ano, estado, setor, faixa etária e faixa salarial valem para todas as telas."),
+        ("Filtre pela barra lateral", "Ano, estado, setor, faixa etária e faixa salarial valem para todas as telas. No celular, toque em “Filtros”."),
         ("Clique e passe o mouse", "Clique em um estado no mapa para focar; passe o mouse nos gráficos para ver os valores."),
         ("Compare", "Mude os filtros e observe como setores, regiões e grupos se comportam."),
     ]
@@ -819,48 +890,57 @@ def pagina_inicio(cat: dict):
     k1, k2, k3, k4 = st.columns(4)
     for col, (rotulo, valor, sub_) in zip((k1, k2, k3, k4), [
         ("Período", f"{anos[0]}–{anos[-1]}", f"{len(anos)} anos de RAIS"),
-        ("Grupos agregados", num(cat["linhas"]), "ano × estado × setor × sexo × idade × raça/cor × faixa salarial"),
         ("Vínculos somados", num(cat["vinculos_total"]), f"nos {len(anos)} anos do período"),
-        ("Dataset gerado em", gerado, "a partir da Base dos Dados"),
+        ("Setores", f"{cat['setores']['setor_amigavel'].nunique()} grupos", f"{cat['setores']['setor_descricao'].nunique()} divisões oficiais da CNAE"),
+        ("Recorte geográfico", "27 UFs", "o menor recorte é o estado"),
     ]):
         col.markdown(f'<div class="destaque"><div class="destaque-r">{rotulo}</div><div class="destaque-v">{valor}</div>'
                      f'<div class="destaque-s">{sub_}</div></div>', unsafe_allow_html=True)
-    st.markdown("<div style='height:.6rem'></div>", unsafe_allow_html=True)
-    st.markdown("**Fonte:** RAIS — Relação Anual de Informações Sociais, do Ministério do Trabalho e Emprego, "
-                "acessada pela plataforma [Base dos Dados](https://basedosdados.org). Os microdados foram agregados "
-                "antes de chegar ao painel, o que mantém a navegação rápida.")
-
-    st.markdown('<div class="secao">Como organizamos os setores</div>', unsafe_allow_html=True)
-    n_div = cat["setores"]["setor_descricao"].nunique()
-    n_cat = cat["setores"]["setor_amigavel"].nunique()
+    st.markdown("<div style='height:.8rem'></div>", unsafe_allow_html=True)
     st.markdown(
-        f"A classificação oficial de atividades (CNAE) tem **{n_div} divisões** com nomes técnicos, como "
-        f"“Atividades de atenção à saúde humana integradas com assistência social, prestadas em residências coletivas e particulares”. "
-        f"Para facilitar a leitura, agrupamos essas divisões em **{n_cat} categorias** de reconhecimento imediato "
-        f"(ex.: Saúde, Educação, Tecnologia da Informação e Telecomunicações). Quem quiser o detalhe oficial pode "
-        f"refinar pelo filtro **Setor específico (CNAE)** na barra lateral."
-    )
-    with st.expander("Ver quais divisões compõem cada categoria"):
+        '<div class="aviso"><b>Leia com cuidado:</b> os números contam <b>vínculos formais</b> (não pessoas), '
+        "em <b>reais de cada ano</b> (sem correção pela inflação), e o gap compara médias, sem controlar por cargo "
+        "ou jornada. Detalhes abaixo.</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:.6rem'></div>", unsafe_allow_html=True)
+
+    with st.expander("De onde vêm os dados"):
+        st.markdown(
+            "**Fonte:** RAIS — Relação Anual de Informações Sociais, do Ministério do Trabalho e Emprego, "
+            "acessada pela plataforma [Base dos Dados](https://basedosdados.org). Os microdados foram agregados "
+            f"antes de chegar ao painel ({num(cat['linhas'])} grupos de ano × estado × setor × sexo × idade × "
+            f"raça/cor × faixa salarial), o que mantém a navegação rápida. Dataset gerado em {gerado}.")
+
+    with st.expander("Como organizamos os setores"):
+        n_div = cat["setores"]["setor_descricao"].nunique()
+        n_cat = cat["setores"]["setor_amigavel"].nunique()
+        st.markdown(
+            f"A classificação oficial de atividades (CNAE) tem **{n_div} divisões** com nomes técnicos, como "
+            f"“Atividades de atenção à saúde humana integradas com assistência social, prestadas em residências coletivas e particulares”. "
+            f"Para facilitar a leitura, agrupamos essas divisões em **{n_cat} grupos** de reconhecimento imediato "
+            f"(ex.: Saúde, Educação, Tecnologia da Informação e Telecomunicações). Quem quiser o detalhe oficial pode "
+            f"refinar pelo filtro **Setor específico (CNAE)** na barra lateral."
+        )
         tab = (cat["setores"].groupby("setor_amigavel")["setor_descricao"]
                .agg(divisoes="count", exemplos=lambda s: "; ".join(list(s)[:3]) + ("…" if len(s) > 3 else ""))
-               .reset_index().rename(columns={"setor_amigavel": "Categoria", "divisoes": "Nº de divisões CNAE", "exemplos": "Exemplos"}))
+               .reset_index().rename(columns={"setor_amigavel": "Grupo", "divisoes": "Nº de divisões CNAE", "exemplos": "Exemplos"}))
         st.dataframe(tab, hide_index=True, **LARGURA)
 
-    st.markdown('<div class="secao">Leia com cuidado</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="aviso"><ul style="margin:0;padding-left:1.2rem;line-height:1.7">'
-        "<li><b>Vínculos não são pessoas.</b> Os números contam vínculos formais registrados na RAIS ao longo do ano; "
-        "uma mesma mulher pode ter mais de um vínculo, e quem saiu do emprego durante o ano também aparece.</li>"
-        "<li><b>Só o mercado formal.</b> Trabalho informal, autônomo e por conta própria não estão na RAIS — "
-        "o painel não representa todas as mulheres que trabalham.</li>"
-        "<li><b>Valores em reais de cada ano.</b> A remuneração não foi corrigida pela inflação; compare anos "
-        "pela participação e pelo gap (%), não pelo valor em R$.</li>"
-        "<li><b>Gap não é “mesma função, salário diferente”.</b> É a diferença entre as médias de mulheres e homens "
-        "no recorte, sem controlar por cargo, escolaridade, jornada ou tempo de empresa.</li>"
-        "<li><b>Recortes pequenos oscilam.</b> Com muitos filtros ao mesmo tempo, poucos vínculos sustentam a média; "
-        "desconfie de valores extremos.</li></ul></div>",
-        unsafe_allow_html=True,
-    )
+    with st.expander("Limitações dos dados"):
+        st.markdown(
+            '<ul style="margin:0;padding-left:1.2rem;line-height:1.7">'
+            "<li><b>Vínculos não são pessoas.</b> Os números contam vínculos formais registrados na RAIS ao longo do ano; "
+            "uma mesma mulher pode ter mais de um vínculo, e quem saiu do emprego durante o ano também aparece.</li>"
+            "<li><b>Só o mercado formal.</b> Trabalho informal, autônomo e por conta própria não estão na RAIS — "
+            "o painel não representa todas as mulheres que trabalham.</li>"
+            "<li><b>Valores em reais de cada ano.</b> A remuneração não foi corrigida pela inflação; compare anos "
+            "pela participação e pelo gap (%), não pelo valor em R$.</li>"
+            "<li><b>Gap não é “mesma função, salário diferente”.</b> É a diferença entre as médias de mulheres e homens "
+            "no recorte, sem controlar por cargo, escolaridade, jornada ou tempo de empresa.</li>"
+            "<li><b>Estado é o menor recorte.</b> Diferenças entre cidades de um mesmo estado não aparecem.</li>"
+            "<li><b>Recortes pequenos oscilam.</b> Com muitos filtros ao mesmo tempo, poucos vínculos sustentam a média; "
+            "desconfie de valores extremos.</li></ul>",
+            unsafe_allow_html=True,
+        )
     st.markdown("<div style='height:1rem'></div>", unsafe_allow_html=True)
     st.button("Começar pelo Panorama →", on_click=ir_para, args=("1 · Panorama",), type="primary", key="comecar")
     st.caption("Projeto Final II — Análise e Desenvolvimento de Sistemas, UNISINOS · Dafni Rosa Chananeco de Almeida.")
@@ -879,7 +959,6 @@ def pagina_panorama(ctx):
     kpis(ctx)
 
     est = painel_sexo(ctx.snap_br, ["sigla_uf", "sigla_uf_nome"])
-    # Regiões comparam sempre o Brasil inteiro; com um estado em foco, a região dele fica em amarelo.
     reg = painel_sexo(ctx.snap_br, ["regiao"])
     reg = reg[reg["regiao"].astype(str) != "Outra"]
     regiao_foco = REGIAO_DA_UF.get(ctx.foco_sigla) if ctx.foco_sigla else None
@@ -889,7 +968,9 @@ def pagina_panorama(ctx):
     col_mapa, col_dir = st.columns([3, 2])
 
     with col_mapa:
-        with cartao("Mapa do Brasil", "Clique em um estado para filtrar o painel inteiro. Escolha a métrica abaixo."):
+        dica_mapa = ("Toque em um estado para ver os valores; para focar nele, use “Filtros”." if eh_celular()
+                     else "Clique em um estado para filtrar o painel inteiro. Escolha a métrica abaixo.")
+        with cartao("Mapa do Brasil", dica_mapa):
             metrica = st.radio("Métrica", list(METRICAS_MAPA), horizontal=True, label_visibility="collapsed", key="metrica_mapa")
             if ctx.geojson is None:
                 st.warning(f"Arquivo de geojson não encontrado em {GEOJSON_PATH}.")
@@ -1006,7 +1087,7 @@ def pagina_onde_estao(ctx):
             hovertemplate="<b>%{customdata[0]}</b><br>Participação feminina: %{x:.1f}%<br>Remuneração feminina: R$ %{y:,.0f}"
                           "<br>Gap: %{customdata[1]:.1f}%<extra></extra>",
         ))
-        # rótulos só para os 6 maiores setores (rotulagem seletiva)
+        
         for _, r in d.nlargest(6, "total").iterrows():
             fig.add_annotation(x=r["part"], y=r["rem_f"], text=quebrar(r["setor_amigavel"], 26), showarrow=False,
                                yshift=30, font=dict(size=12, color=COR_TEXTO), bgcolor="rgba(255,255,255,.8)")
@@ -1129,13 +1210,15 @@ def pagina_quanto_ganham(ctx):
 def pagina_perfil(ctx):
     cabecalho_pagina("4 · Perfil", "Quem são as trabalhadoras — idade e raça/cor mudam o quadro?", ctx)
     idade = painel_sexo(ctx.snap, ["faixa_etaria"]).dropna(subset=["rem_f"])
+    idade = idade[idade["faixa_etaria"].map(faixa_valida)]
     raca = painel_sexo(ctx.snap, ["raca_cor"]).dropna(subset=["rem_f"])
     if idade.empty or raca.empty:
         st.info("Sem dados para este recorte.")
         return
     idade["_o"] = idade["faixa_etaria"].astype(str).map(chave_ordem)
     idade = idade.sort_values("_o")
-    r_top = raca[raca["total"] >= 0.01 * raca["total"].sum()].sort_values("rem_f", ascending=False)
+    identificada = ~raca["raca_cor"].astype(str).str.lower().str.contains("identificad|ignorad|não informad")
+    r_top = raca[identificada & (raca["total"] >= 0.01 * raca["total"].sum())].sort_values("rem_f", ascending=False)
     i_gap = idade.dropna(subset=["gap"])
     frase_idade = (f"o gap é maior na faixa de <b>{i_gap.sort_values('gap').iloc[-1]['faixa_etaria']}</b> "
                    f"({pct(i_gap.sort_values('gap').iloc[-1]['gap'])})" if not i_gap.empty else "")
@@ -1181,6 +1264,7 @@ def pagina_perfil(ctx):
         h = painel_sexo(ctx.snap, ["raca_cor", "faixa_etaria"])
         h["raca_cor"] = h["raca_cor"].astype(str)
         h["faixa_etaria"] = h["faixa_etaria"].astype(str)
+        h = h[h["faixa_etaria"].map(faixa_valida)]
         h.loc[h["qtd_f"] < MIN_VINCULOS_CELULA, "rem_f"] = np.nan
         ordem_raca = (h.groupby("raca_cor")["qtd_f"].sum().sort_values(ascending=False).index.tolist())
         ordem_idade = ordenar_faixas(h["faixa_etaria"].unique())
