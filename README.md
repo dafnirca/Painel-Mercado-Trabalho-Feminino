@@ -75,5 +75,23 @@ série Masculino), Bright Amber (#FDD22B, estado em foco/destaques), Sweet Salmo
 - [x] Aplicação Streamlit com narrativa em 5 telas + Início, filtros na barra lateral e clique no mapa
 - [x] Correção de tema: `backgroundColor` do app (antes branco puro, agora cinza-claro `#F2F2F2`, igual à `secondaryBackgroundColor`)
 - [x] Refinamento de design e usabilidade (tipografia maior, cartões com conclusão, tela Início)
-- [ ] Validar o design com dados reais e com as usuárias (avaliação de outubro)
+- [x] Avaliação com usuárias (questionário, out–nov/2026): utilidade percebida média 4,46/5 e interface intuitiva 4,54/5 (n = 26)
+- [x] Ajustes pós-avaliação (ver abaixo)
 - [ ] Nova extração para incluir escolaridade (avaliação de custo/benefício pendente)
+
+## Ajustes a partir da avaliação (nov/2026)
+
+Cada ajuste responde a um comentário da pergunta aberta do questionário.
+
+| Comentário | Ajuste no painel |
+|---|---|
+| "Os tons de rosa são muito sutis para mostrar diferenças" (mapa) | Escala do mapa com 4 tons (claro → rosa → vinho); o código `IGNORADO` da RAIS saiu dos rankings por estado, pois esticava a escala de cores (17,9% contra 41–47% dos estados) e aparecia como "menor estado" |
+| "Os gráficos pelo celular mudam de formato ao tentar rolar a tela" | Zoom e arrasto desligados em todos os gráficos; no celular, o mapa fica estático e mais baixo |
+| "Dificuldade em usar o filtro / abrir o menu no celular" | Barra lateral recolhida em telas pequenas e botão de abrir com o rótulo "Filtros" |
+| "Muita informação textual ao mesmo tempo" | Chave "Mostrar explicações nos gráficos" e tela Início enxuta, com fonte, setores e limitações em seções recolhíveis |
+| "Incluiria mais ramos de trabalho" | Ajuda do filtro aponta as 87 divisões CNAE do filtro "Setor específico" |
+| (revisão durante os ajustes) | Rótulos sem informação da RAIS ("Código não encontrado", raça/cor "Não identificado") fora dos rankings e manchetes de idade, faixa salarial e raça/cor |
+| "Seria importante abrir por cidade" | Registrado como trabalho futuro; o limite é explicitado na tela Início |
+
+Link do questionário (opcional): defina `AVALIACAO_URL` em `.streamlit/secrets.toml`
+para exibir o botão "Avalie o painel" na barra lateral.
