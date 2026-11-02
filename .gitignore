@@ -1,0 +1,19 @@
+# Ambiente
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Segredos e credenciais (BigQuery / Streamlit)
+.env
+.streamlit/secrets.toml
+*credentials*.json
+*service-account*.json
+
+# Dados brutos: regenerados por src/01_ingest.py. O painel só lê data/processed/.
+data/raw/
+
+# Sistema / editores
+.DS_Store
+.vscode/
+.idea/
